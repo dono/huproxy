@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -29,12 +30,16 @@ import (
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/aus/proxyplease"
 	huproxy "github.com/google/huproxy/lib"
 )
 
 var (
 	writeTimeout = flag.Duration("write_timeout", 10*time.Second, "Write timeout")
 	basicAuth    = flag.String("auth", "", "HTTP Basic Auth in @<filename> or <username>:<password> format.")
+	fwProxyURL   = flag.String("fwproxy", "", "Forward Proxy URL")
+	fwProxyUser  = flag.String("fwpuser", "", "Forward Proxy Basic Auth User")
+	fwProxyPass  = flag.String("fwppass", "", "Forward Proxy Basic Auth Pass")
 	certFile     = flag.String("cert", "", "Certificate Auth File")
 	keyFile      = flag.String("key", "", "Certificate Key File")
 	verbose      = flag.Bool("verbose", false, "Verbose.")
@@ -80,7 +85,7 @@ func main() {
 	if flag.NArg() != 1 {
 		log.Fatalf("Want exactly one arg")
 	}
-	url := flag.Arg(0)
+	targetURL := flag.Arg(0)
 
 	if *verbose {
 		log.Infof("huproxyclient %s", huproxy.Version)
@@ -90,13 +95,25 @@ func main() {
 	defer cancel()
 
 	dialer := websocket.Dialer{}
+
+	if *fwProxyURL != "" && *fwProxyUser != "" && *fwProxyPass != "" {
+		fwProxyURL, err := url.Parse(*fwProxyURL)
+		if err != nil {
+			log.Fatalf("Error parsing forward proxy URL %q: %v", *fwProxyURL, err)
+		}
+		dialContext := proxyplease.NewDialContext(proxyplease.Proxy{URL: fwProxyURL, Username: *fwProxyUser, Password: *fwProxyPass})
+		dialer = websocket.Dialer{
+			NetDialContext:   dialContext,
+		}
+	}
+
 	dialer.TLSClientConfig = new(tls.Config)
 	if *insecure {
 		dialer.TLSClientConfig.InsecureSkipVerify = true
 	}
 	head := map[string][]string{}
 
-	// Add basic auth.
+	// Add basic auth in huproxy server.
 	if *basicAuth != "" {
 		ss, err := secretString(*basicAuth)
 		if err != nil {
@@ -118,9 +135,9 @@ func main() {
 		dialer.TLSClientConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	conn, resp, err := dialer.Dial(url, head)
+	conn, resp, err := dialer.Dial(targetURL, head)
 	if err != nil {
-		dialError(url, resp, err)
+		dialError(targetURL, resp, err)
 	}
 	defer conn.Close()
 

@@ -1,4 +1,4 @@
-# HUProxy
+# HUProxy (supports fwproxy with basic auth)
 
 Copyright 2017 Google Inc.
 
@@ -97,4 +97,9 @@ If remote server uses self-signed or invalid certificate then use `-insecure_con
 
 ```bash
 ssh -o 'ProxyCommand=./huproxyclient -insecure_conn wss://proxy.example.com/proxy/%h/%p' shell.example.com
+```
+
+### Client that supports FWProxy with Basic Auth
+```bash
+ssh -o 'ProxyCommand=./huproxyclient -fwproxy=http://fwproxy.example.com -fwpuser=foo -fwppass=bar wss://proxy.example.com/proxy/%h/%p' shell.example.com
 ```
