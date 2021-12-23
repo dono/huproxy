@@ -30,16 +30,14 @@ import (
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/aus/proxyplease"
 	huproxy "github.com/google/huproxy/lib"
 )
 
 var (
 	writeTimeout = flag.Duration("write_timeout", 10*time.Second, "Write timeout")
 	basicAuth    = flag.String("auth", "", "HTTP Basic Auth in @<filename> or <username>:<password> format.")
-	fwProxyURL   = flag.String("fwproxy", "", "Forward Proxy URL")
-	fwProxyUser  = flag.String("fwpuser", "", "Forward Proxy Basic Auth User")
-	fwProxyPass  = flag.String("fwppass", "", "Forward Proxy Basic Auth Pass")
+	fwProxyURL   = flag.String("fproxy", "", "Forward Proxy URL")
+	fwProxyAuth  = flag.String("fpauth", "", "Forward Proxy Basic Auth in @<filename> or <username>:<password> format.")
 	certFile     = flag.String("cert", "", "Certificate Auth File")
 	keyFile      = flag.String("key", "", "Certificate Key File")
 	verbose      = flag.Bool("verbose", false, "Verbose.")
@@ -47,6 +45,9 @@ var (
 )
 
 func secretString(s string) (string, error) {
+	if len(strings.Split(s, ":")) != 2 {
+		return "", fmt.Errorf("invalid secrets format")
+	}
 	if strings.HasPrefix(s, "@") {
 		fn := s[1:]
 		st, err := os.Stat(fn)
@@ -96,14 +97,22 @@ func main() {
 
 	dialer := websocket.Dialer{}
 
-	if *fwProxyURL != "" && *fwProxyUser != "" && *fwProxyPass != "" {
+	if *fwProxyURL != "" && *fwProxyAuth != "" {
 		fwProxyURL, err := url.Parse(*fwProxyURL)
 		if err != nil {
 			log.Fatalf("Error parsing forward proxy URL %q: %v", *fwProxyURL, err)
 		}
-		dialContext := proxyplease.NewDialContext(proxyplease.Proxy{URL: fwProxyURL, Username: *fwProxyUser, Password: *fwProxyPass})
+
+		ss, err := secretString(*fwProxyAuth)
+		if err != nil {
+			log.Fatalf("Error reading FWProxy secret string %q: %v", *fwProxyAuth, err)
+		}
+
+		fpAuth := strings.Split(ss, ":")
+		fwProxyURL.User = url.UserPassword(fpAuth[0], fpAuth[1])
+
 		dialer = websocket.Dialer{
-			NetDialContext:   dialContext,
+			Proxy: http.ProxyURL(fwProxyURL),
 		}
 	}
 
