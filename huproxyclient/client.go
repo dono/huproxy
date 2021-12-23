@@ -45,9 +45,7 @@ var (
 )
 
 func secretString(s string) (string, error) {
-	if len(strings.Split(s, ":")) != 2 {
-		return "", fmt.Errorf("invalid secrets format")
-	}
+	ss := s
 	if strings.HasPrefix(s, "@") {
 		fn := s[1:]
 		st, err := os.Stat(fn)
@@ -59,9 +57,17 @@ func secretString(s string) (string, error) {
 			return "", fmt.Errorf("valid permissions for %q is %0o, was %0o", fn, 0600, p)
 		}
 		b, err := ioutil.ReadFile(fn)
-		return strings.TrimSpace(string(b)), err
+		if err != nil {
+			return "", err
+		}
+		ss = strings.TrimSpace(string(b))
 	}
-	return s, nil
+
+	if len(strings.Split(ss, ":")) != 2 {
+		return "", fmt.Errorf("invalid secrets format")
+	}
+
+	return ss, nil
 }
 
 func dialError(url string, resp *http.Response, err error) {
